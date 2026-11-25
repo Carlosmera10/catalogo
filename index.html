@@ -1194,7 +1194,7 @@ function bulkUpdate() {
     <div class="tbl-wrap bulkt"><table class="tbl"><thead><tr><th style="cursor:default">#</th>${Array.from({ length: d.ncol }, (_, j) => `<th style="cursor:default">${mapSel(j)}${d.header ? `<div class="muted xs">columna «${esc(d.heads[j] || '')}»</div>` : ''}</th>`).join('')}</tr></thead>
     <tbody>${show.map((r, i) => `<tr class="${flags[i] ? 'dup' : ''}"><td class="muted xs">${i + 1}${flags[i] ? '<br><span class="tag" style="--c:var(--danger)">ya existe</span>' : ''}</td>${Array.from({ length: d.ncol }, (_, j) => `<td class="${BULK.map[j] === '__skip' ? 'skip' : ''}">${esc(r[j] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
     ${d.rows.length > show.length ? `<div class="muted xs" style="margin-top:4px">Se muestran ${show.length} de ${d.rows.length} filas.</div>` : ''}
-    <div class="bulksum">Se añadirá${n === 1 ? '' : 'n'} <b>${n}</b> ficha${n === 1 ? '' : 's'}${dups ? ` · ${dups} ya existe${dups === 1 ? '' : 'n'}${BULK.skipDup ? ' y se saltarán' : ' (se añadirán igualmente)'}` : ''}.
+    <div class="bulksum">Se añadirá${n === 1 ? '' : 'n'} <b>${n}</b> ficha${n === 1 ? '' : 's'}${dups ? ` · ${dups} ya existe${dups === 1 ? '' : 'n'}${BULK.skipDup ? (dups === 1 ? ' y se saltará' : ' y se saltarán') : (dups === 1 ? ' (se añadirá igualmente)' : ' (se añadirán igualmente)')}` : ''}.
     ${ti < 0 ? `<br>⚠️ Ninguna columna va al campo título (<b>${esc(tf?.name || '')}</b>): las fichas saldrán sin nombre.` : ''}
     ${newCols.length ? `<br>Campos nuevos que se crearán: <b>${newCols.map(esc).join(', ')}</b>.` : ''}
     ${nuevas.length ? `<br>Opciones nuevas que se crearán: ${nuevas.join(' · ')}.` : ''}</div>`;
