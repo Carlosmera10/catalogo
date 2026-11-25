@@ -264,6 +264,15 @@ textarea.inp{resize:vertical}
 #toast .lnk{color:#8fe3c9;font-weight:700}
 kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:12px;background:var(--panel)}
 .helpc p,.helpc li{line-height:1.55}
+textarea.mono{font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.bulkt{max-height:340px}
+.bulkt th{vertical-align:top}
+.bulkt th .sel{max-width:200px}
+.bulkt td.skip{opacity:.35;text-decoration:line-through}
+.bulkt tr.dup td{opacity:.55}
+.bulksum{margin-top:10px;background:var(--soft);border-radius:10px;padding:9px 12px;font-size:13.5px;line-height:1.6}
+details.common{margin-top:12px;border:1px solid var(--line);border-radius:11px;padding:8px 12px;background:var(--panel)}
+details.common summary{cursor:pointer;font-weight:600;font-size:14px}
 </style>
 </head>
 <body>
@@ -274,7 +283,7 @@ kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;paddi
 <div id="toast"></div>
 <script>
 'use strict';
-const APP_VERSION = '1.0';
+const APP_VERSION = '1.1';
 
 /* ========== Utilidades ========== */
 const $ = (s, r = document) => r.querySelector(s);
@@ -452,7 +461,7 @@ function convertValue(v, a, b) {
   const first = Array.isArray(t) ? t[0] : t;
   switch (b.type) {
     case 'select': return isEmpty(first) ? undefined : ensureOpt(b, first).id;
-    case 'multi': { const labs = Array.isArray(t) ? t : String(t).split(/\s*[;|]\s*/); const ids = labs.map(String).map(s => s.trim()).filter(Boolean).map(l => ensureOpt(b, l).id); return ids.length ? [...new Set(ids)] : undefined; }
+    case 'multi': { const labs = Array.isArray(t) ? t : splitTags(t); const ids = labs.map(String).map(s => s.trim()).filter(Boolean).map(l => ensureOpt(b, l).id); return ids.length ? [...new Set(ids)] : undefined; }
     case 'number': { const n = typeof first === 'number' ? first : num(first); return isNaN(n) ? undefined : n; }
     case 'rating': { const n = typeof first === 'number' ? first : num(first); return isNaN(n) ? undefined : Math.max(0, Math.min(5, Math.round(n))); }
     case 'bool': return typeof first === 'boolean' ? first : /^(s[ií]|true|1|x|yes|y|✓)$/i.test(String(first).trim());
@@ -461,6 +470,12 @@ function convertValue(v, a, b) {
   }
 }
 
+function splitTags(s) { s = String(s); return (/[;|]/.test(s) ? s.split(/\s*[;|]\s*/) : s.split(/\s*,\s*/)).map(x => x.trim()).filter(Boolean); }
+function facetPreset() {
+  const c = cat(), u = ui(), out = {};
+  for (const fd of c.fields) { const fc = u.facets[fd.id]; if (!fc?.inc?.length) continue; const ids = fc.inc.filter(x => x !== '__none'); if (!ids.length) continue; if (fd.type === 'select' && ids.length === 1) out[fd.id] = ids[0]; if (fd.type === 'multi') out[fd.id] = ids; if (fd.type === 'bool' && ids.length === 1) out[fd.id] = ids[0] === 'true'; }
+  return out;
+}
 /* ========== Motor de filtros ========== */
 let TXT = new Map();
 function itemText(it, c) {
@@ -604,6 +619,7 @@ function renderShell() {
     <button class="cat-btn" data-act="catalogs" title="Cambiar de catálogo">${esc(c.icon)} <span>${esc(c.name)}</span> ▾</button>
     <div class="search"><input id="q" type="search" autocomplete="off" placeholder="Buscar en todo…" title='Varias palabras = todas · -palabra excluye · "frase exacta"' value="${esc(u.search)}"></div>
     <button class="btn primary" data-act="new-item">＋ <span class="hide-sm">Añadir</span></button>
+    <button class="btn hide-sm" data-act="bulk" title="Añadir varias fichas a la vez (líneas de texto o CSV)">≡＋ Varias</button>
     <button class="icon-btn" data-act="menu" aria-label="Menú">⋯</button>
   </header>
   <div class="layout">
@@ -734,7 +750,7 @@ function renderMain() {
   const chips = activeChips();
   if (chips.length) h += `<div class="active">${chips.join('')}</div>`;
   if (!c.items.length) {
-    h += `<div class="empty"><div class="big">${esc(c.icon)}</div><h3>Este catálogo está vacío</h3><p>Primero define los campos que quieras (categoría, dificultad, etiquetas…) y después añade fichas.</p><div class="row gap" style="justify-content:center"><button class="btn" data-act="schema">🧩 Configurar campos</button><button class="btn primary" data-act="new-item">＋ Añadir ficha</button><button class="btn" data-act="io">📥 Importar CSV / Excel</button></div></div>`;
+    h += `<div class="empty"><div class="big">${esc(c.icon)}</div><h3>Este catálogo está vacío</h3><p>Primero define los campos que quieras (categoría, dificultad, etiquetas…) y después añade fichas.</p><div class="row gap" style="justify-content:center"><button class="btn" data-act="schema">🧩 Configurar campos</button><button class="btn primary" data-act="new-item">＋ Añadir ficha</button><button class="btn" data-act="bulk">≡＋ Añadir varias (texto o CSV)</button></div></div>`;
   } else if (!R.items.length) {
     h += `<div class="empty"><div class="big">🔎</div><p>Ninguna ficha cumple los filtros.</p><button class="btn" data-act="clear-all">Quitar filtros</button></div>`;
   } else {
@@ -816,8 +832,7 @@ function openEditor(id, preset) {
   ED = { id: it ? it.id : null, values: clone(it ? it.values : (preset || {})) };
   if (!it && !preset) {
     // Al crear, rellena con los filtros rápidos activos (incluidos) para ahorrar clics
-    const u = ui();
-    for (const fd of c.fields) { const fc = u.facets[fd.id]; if (!fc?.inc?.length) continue; const ids = fc.inc.filter(x => x !== '__none'); if (!ids.length) continue; if (fd.type === 'select' && ids.length === 1) ED.values[fd.id] = ids[0]; if (fd.type === 'multi') ED.values[fd.id] = ids; if (fd.type === 'bool' && ids.length === 1) ED.values[fd.id] = ids[0] === 'true'; }
+    ED.values = facetPreset();
   }
   renderEditor();
   setTimeout(() => $('#modal-root .fld .inp')?.focus(), 30);
@@ -825,6 +840,7 @@ function openEditor(id, preset) {
 function renderEditor() {
   const c = cat();
   openModal(`<div class="mhead"><h2>${ED.id ? '✏️ Editar ficha' : '＋ Nueva ficha'}</h2>${X}</div>
+    ${ED.id ? '' : '<div class="muted small" style="margin-top:-6px">¿Muchas a la vez? <button class="link" data-act="bulk">Añadir varias de golpe</button></div>'}
     ${c.fields.map(edFieldHTML).join('')}
     <div class="muted xs" style="margin-top:12px">¿Te falta un campo? <button class="link" data-act="schema">Configurar campos</button></div>
     <div class="mfoot">${ED.id ? '' : '<button class="btn ghost" data-act="ed-save" data-v="again">Guardar y añadir otra</button>'}<button class="btn ghost" data-act="close">Cancelar</button><button class="btn primary" data-act="ed-save">Guardar</button></div>`, { kind: 'editor' });
@@ -995,6 +1011,7 @@ function openMenu() {
   openModal(`<div class="mhead"><h2>Menú</h2>${X}</div><div class="menu">
     <button data-act="schema">🧩 Campos de «${esc(c.name)}»<small>Crear, ordenar y configurar campos y opciones (categorías, dificultades…)</small></button>
     <button data-act="catalogs">📚 Mis catálogos<small>Cambiar, crear desde plantilla, renombrar o borrar</small></button>
+    <button data-act="bulk">≡＋ Añadir varias fichas<small>Una por línea, o tabla CSV / Excel con vista previa</small></button>
     <button data-act="io">💾 Importar / Exportar<small>Copia de seguridad, CSV para Excel, pegar desde Excel</small></button>
     <button data-act="stats">📊 Resumen de lo filtrado<small>Recuentos por categoría, medias y totales</small></button>
     ${deferredInstall ? '<button data-act="install">📲 Instalar como aplicación</button>' : ''}
@@ -1042,8 +1059,7 @@ function openIO() {
   openModal(`<div class="mhead"><h2>💾 Importar / Exportar</h2>${X}</div><div class="io">
    <div class="box"><b>🛟 Copia de seguridad completa</b><p>Todos los catálogos, campos, fichas, fotos y vistas en un archivo .json. Guárdalo en Drive o en el PC.</p><div class="row"><button class="btn primary sm" data-act="exp-backup">⬇️ Descargar copia</button><button class="btn sm" data-act="imp-json">⬆️ Restaurar / importar .json</button></div></div>
    <div class="box"><b>${esc(c.icon)} Este catálogo: «${esc(c.name)}»</b><p>CSV con punto y coma, listo para abrir en Excel (España).</p><div class="row"><button class="btn sm" data-act="exp-csv" data-v="filtered">⬇️ CSV de lo filtrado (${R.items.length})</button><button class="btn sm" data-act="exp-csv" data-v="all">⬇️ CSV de todo (${c.items.length})</button><button class="btn sm" data-act="exp-cat">⬇️ Catálogo .json</button></div></div>
-   <div class="box"><b>📥 Añadir fichas desde CSV o Excel</b><p>La primera fila deben ser los nombres de las columnas. Las columnas que coincidan con un campo se usan; las nuevas se crean solas (adivina el tipo). En etiquetas separa valores con «;».</p><div class="row"><button class="btn sm" data-act="imp-csv">⬆️ Elegir archivo CSV</button></div>
-   <label class="lbl">…o copia las celdas en Excel (con la fila de títulos) y pégalas aquí:</label><textarea class="inp" id="paste" rows="4" placeholder="Nombre&#9;Categoría&#9;Dificultad…"></textarea><div class="row" style="margin-top:6px"><button class="btn sm" data-act="imp-paste">Importar lo pegado</button></div></div>
+   <div class="box"><b>📥 Añadir varias fichas de golpe</b><p>Una por línea, o una tabla CSV / celdas copiadas de Excel, con o sin fila de títulos. Antes de añadir verás una vista previa y podrás elegir a qué campo va cada columna.</p><div class="row"><button class="btn primary sm" data-act="bulk">＋ Escribir o pegar</button><button class="btn sm" data-act="bulk-open-file">📂 Cargar .csv / .txt</button></div></div>
   </div>`, { kind: 'io' });
 }
 function download(name, text, type) { const b = new Blob([text], { type }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }
@@ -1062,10 +1078,10 @@ function toCSV(items, c) {
   }).join(';'));
   return '﻿' + lines.join('\r\n');
 }
-function parseDelimited(text) {
+function parseDelimited(text, sep) {
   text = String(text).replace(/^﻿/, '');
   const first = text.split(/\r?\n/)[0] || '';
-  const d = first.includes('\t') ? '\t' : (first.split(';').length >= first.split(',').length ? ';' : ',');
+  const d = sep || (first.includes('\t') ? '\t' : (first.split(';').length >= first.split(',').length ? ';' : ','));
   const rows = []; let row = [], cell = '', q = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -1090,31 +1106,143 @@ function guessType(vals) {
   if (v.length >= 4 && dist <= Math.min(20, Math.ceil(v.length / 2))) return 'select';
   return 'text';
 }
-async function importTable(text) {
-  const c = cat(); const rows = parseDelimited(text);
-  if (rows.length < 2) { toast('⚠️ Necesito una fila de títulos y al menos una fila de datos'); return; }
-  const head = rows[0].map(h => h.trim()), data = rows.slice(1);
-  const newCols = head.filter(h => h && !c.fields.find(f => norm(f.name) === norm(h)));
-  const ok = await dialog({ title: 'Importar fichas', msg: `Se van a añadir <b>${data.length}</b> fichas a «${esc(c.name)}».${newCols.length ? `<br>Columnas nuevas que se crearán como campos: <b>${newCols.map(esc).join(', ')}</b>.` : ''}`, buttons: [{ label: 'Cancelar', value: false, cls: 'ghost' }, { label: 'Importar', value: true, cls: 'primary' }] });
-  if (!ok) return;
-  const wasEmpty = !c.items.length; const tfBefore = titleField(c);
-  const map = head.map((h, j) => {
-    if (!h) return null; let fd = c.fields.find(f => norm(f.name) === norm(h));
-    if (!fd) { const type = guessType(data.map(r => r[j])); fd = { id: uid(), name: h, type, showOnCard: !['longtext', 'image', 'url'].includes(type) }; if (type === 'select' || type === 'multi') fd.options = []; c.fields.push(fd); }
-    return fd;
-  });
-  const now = nowISO();
-  for (const r of data) {
-    const it = { id: uid(), created: now, updated: now, values: {} };
-    map.forEach((fd, j) => { if (!fd) return; const raw = (r[j] ?? '').trim(); if (!raw) return; const v = convertValue(raw, { type: 'text' }, fd); if (!isEmpty(v)) it.values[fd.id] = v; });
-    c.items.push(it);
+/* ---------- Añadir varias fichas (líneas de texto o CSV) ---------- */
+let BULK = null;
+const BULLET = /^\s*(?:[-*•·–—]|\d+[.)º])\s+/;
+const SEP_LABEL = { auto: 'Detectar solo', lines: 'Una ficha por línea', ';': 'Columnas separadas por ;', ',': 'Columnas separadas por ,', tab: 'Columnas de Excel (tabulador)' };
+async function readTextFile(f) { const buf = await f.arrayBuffer(); try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (e) { return new TextDecoder('windows-1252').decode(buf); } }
+function openBulk(text = '') {
+  BULK = { text, sep: 'auto', header: 'auto', map: null, mapSig: '', skipDup: true, common: facetPreset() };
+  ED = { id: null, values: BULK.common, bulk: true };
+  renderBulk();
+  setTimeout(() => { const t = $('#bulk-text'); if (t && !text) t.focus(); }, 30);
+}
+function renderBulk() {
+  const c = cat(), tf = titleField(c);
+  const commonFields = c.fields.filter(f => f !== tf && f.type !== 'image');
+  const tname = esc(tf?.name || 'título');
+  openModal(`<div class="mhead"><h2>＋ Añadir varias fichas</h2>${X}</div>
+    <p class="muted small" style="margin-top:0">Escribe o pega <b>una ficha por línea</b> (solo el ${tname}), o una tabla <b>CSV / Excel</b> con varias columnas, con o sin fila de títulos.</p>
+    <textarea class="inp mono" id="bulk-text" rows="8" data-in="bulk-text" placeholder="Catan&#10;Carcassonne&#10;Dixit&#10;&#10;…o con columnas:&#10;Nombre;Categoría;Dificultad&#10;Catan;Estrategia;Media">${esc(BULK.text)}</textarea>
+    <div class="row gap" style="margin-top:6px">
+      <button class="btn sm" data-act="bulk-file">📂 Cargar archivo .csv / .txt</button>
+      <span class="spacer"></span>
+      <label class="small muted">Formato <select class="sel" data-ch="bulk-sep">${Object.entries(SEP_LABEL).map(([v, l]) => `<option value="${v}" ${BULK.sep === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    </div>
+    <div id="bulk-map"></div>
+    <details class="common"><summary>🧩 Valores comunes para todas <span class="muted xs">(opcional: rellenan lo que no venga en el texto; en etiquetas se suman)</span></summary>${commonFields.map(edFieldHTML).join('') || '<p class="muted small">No hay más campos.</p>'}</details>
+    <label class="switch" style="margin-top:12px"><input type="checkbox" data-ch="bulk-dup" ${BULK.skipDup ? 'checked' : ''}> Saltar las que ya existen (mismo ${tname})</label>
+    <div class="mfoot"><button class="btn ghost" data-act="close">Cancelar</button><button class="btn primary" id="bulk-go" data-act="bulk-go" disabled>Añadir</button></div>`, { wide: true, kind: 'bulk' });
+  bulkUpdate();
+}
+function bulkSep() {
+  if (BULK.sep !== 'auto') return BULK.sep;
+  const first = BULK.text.split(/\r?\n/).find(l => l.trim()) || '';
+  return first.includes('\t') ? 'tab' : first.includes(';') ? ';' : 'lines';
+}
+function bulkData() {
+  const c = cat(), sep = bulkSep();
+  let rows, header = false, heads = [];
+  if (sep === 'lines') rows = BULK.text.split(/\r?\n/).map(l => l.replace(BULLET, '').trim()).filter(Boolean).map(l => [l]);
+  else rows = parseDelimited(BULK.text, sep === 'tab' ? '\t' : sep).map(r => r.map(x => x.trim()));
+  if (sep !== 'lines' && rows.length) {
+    const matches = rows[0].filter(h => h && c.fields.some(f => norm(f.name) === norm(h))).length;
+    header = BULK.header === 'auto' ? matches > 0 : BULK.header === 'yes';
+    if (header) { heads = rows[0]; rows = rows.slice(1); }
   }
-  if (wasEmpty && tfBefore && !map.includes(tfBefore)) { const t = map.find(f => f && f.type === 'text'); if (t) c.settings.titleField = t.id; }
-  saveNow(); closeModal(); renderShell(); toast(`✔️ ${data.length} fichas importadas`);
+  const ncol = rows.length || heads.length ? Math.max(heads.length, ...rows.map(r => r.length)) : 0;
+  const sig = [sep, ncol, header, heads.join('|')].join('¦');
+  if (BULK.mapSig !== sig) { BULK.mapSig = sig; BULK.map = defaultMap(c, ncol, header, heads); }
+  return { sep, rows, ncol, header, heads };
+}
+function defaultMap(c, ncol, header, heads) {
+  const tf = titleField(c), used = new Set(), m = [];
+  for (let j = 0; j < ncol; j++) {
+    let id = '__skip';
+    if (header) { const h = (heads[j] || '').trim(); const f = c.fields.find(f => norm(f.name) === norm(h)); id = f ? f.id : (h ? '__new' : '__skip'); }
+    else if (j === 0 && tf) id = tf.id;
+    else { const f = c.fields.find(f => f !== tf && f.type !== 'image' && !used.has(f.id)); id = f ? f.id : '__new'; }
+    if (!id.startsWith('__')) used.add(id);
+    m.push(id);
+  }
+  return m;
+}
+function colName(d, j) { return (d.header && (d.heads[j] || '').trim()) || `Columna ${j + 1}`; }
+function bulkUpdate() {
+  const el = $('#bulk-map'), go = $('#bulk-go'); if (!el) return;
+  const c = cat(), tf = titleField(c), d = bulkData();
+  if (!d.rows.length) { el.innerHTML = `<div class="muted small" style="margin:10px 0">${BULK.text.trim() ? 'Solo hay fila de títulos; faltan datos.' : 'Aún no hay nada que añadir.'}</div>`; go.disabled = true; go.textContent = 'Añadir'; return; }
+  const ti = BULK.map.indexOf(tf?.id);
+  const existing = new Set(c.items.map(it => norm(titleOf(it, c))));
+  const seen = new Set(); let dups = 0;
+  const flags = d.rows.map(r => { const t = ti >= 0 ? norm(r[ti] || '') : ''; const dup = !!t && (existing.has(t) || seen.has(t)); if (t) seen.add(t); if (dup) dups++; return dup; });
+  const n = d.rows.length - (BULK.skipDup ? dups : 0);
+  // opciones nuevas que se crearán
+  const nuevas = [];
+  BULK.map.forEach((id, j) => {
+    const fd = c.fields.find(f => f.id === id); if (!fd || !['select', 'multi'].includes(fd.type)) return;
+    const labs = new Map();
+    d.rows.forEach((r, i) => { if (BULK.skipDup && flags[i]) return; const raw = (r[j] || '').trim(); if (!raw) return; const parts = fd.type === 'multi' ? splitTags(raw) : [raw]; parts.forEach(p => { if (p && !fd.options.some(o => norm(o.label) === norm(p))) labs.set(norm(p), p); }); });
+    if (labs.size) nuevas.push(`<b>${esc(fd.name)}</b>: ${[...labs.values()].slice(0, 12).map(esc).join(', ')}${labs.size > 12 ? '…' : ''}`);
+  });
+  const newCols = BULK.map.map((id, j) => id === '__new' ? colName(d, j) : null).filter(Boolean);
+  const mapSel = j => `<select class="sel" data-ch="bulk-map" data-j="${j}"><option value="__skip" ${BULK.map[j] === '__skip' ? 'selected' : ''}>— No usar —</option><option value="__new" ${BULK.map[j] === '__new' ? 'selected' : ''}>＋ Campo nuevo «${esc(colName(d, j))}»</option>${c.fields.map(f => `<option value="${f.id}" ${BULK.map[j] === f.id ? 'selected' : ''}>${TYPES[f.type].icon} ${esc(f.name)}${f === tf ? ' (título)' : ''}</option>`).join('')}</select>`;
+  const show = d.rows.slice(0, 8);
+  let h = '';
+  if (d.sep !== 'lines') h += `<label class="switch" style="margin-top:10px"><input type="checkbox" data-ch="bulk-head" ${d.header ? 'checked' : ''}> La primera fila son los nombres de las columnas</label>`;
+  h += `<div class="small" style="margin:10px 0 6px">Elige en qué campo va cada columna:</div>
+    <div class="tbl-wrap bulkt"><table class="tbl"><thead><tr><th style="cursor:default">#</th>${Array.from({ length: d.ncol }, (_, j) => `<th style="cursor:default">${mapSel(j)}${d.header ? `<div class="muted xs">columna «${esc(d.heads[j] || '')}»</div>` : ''}</th>`).join('')}</tr></thead>
+    <tbody>${show.map((r, i) => `<tr class="${flags[i] ? 'dup' : ''}"><td class="muted xs">${i + 1}${flags[i] ? '<br><span class="tag" style="--c:var(--danger)">ya existe</span>' : ''}</td>${Array.from({ length: d.ncol }, (_, j) => `<td class="${BULK.map[j] === '__skip' ? 'skip' : ''}">${esc(r[j] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    ${d.rows.length > show.length ? `<div class="muted xs" style="margin-top:4px">Se muestran ${show.length} de ${d.rows.length} filas.</div>` : ''}
+    <div class="bulksum">Se añadirá${n === 1 ? '' : 'n'} <b>${n}</b> ficha${n === 1 ? '' : 's'}${dups ? ` · ${dups} ya existe${dups === 1 ? '' : 'n'}${BULK.skipDup ? ' y se saltarán' : ' (se añadirán igualmente)'}` : ''}.
+    ${ti < 0 ? `<br>⚠️ Ninguna columna va al campo título (<b>${esc(tf?.name || '')}</b>): las fichas saldrán sin nombre.` : ''}
+    ${newCols.length ? `<br>Campos nuevos que se crearán: <b>${newCols.map(esc).join(', ')}</b>.` : ''}
+    ${nuevas.length ? `<br>Opciones nuevas que se crearán: ${nuevas.join(' · ')}.` : ''}</div>`;
+  el.innerHTML = h;
+  go.disabled = n === 0; go.textContent = `Añadir ${n} ficha${n === 1 ? '' : 's'}`;
+}
+function bulkGo() {
+  const c = cat(), tf = titleField(c), d = bulkData();
+  const fds = BULK.map.map((id, j) => {
+    if (id === '__skip') return null;
+    if (id === '__new') {
+      const name = colName(d, j); let f = c.fields.find(f => norm(f.name) === norm(name));
+      if (!f) { const type = guessType(d.rows.map(r => r[j])); f = { id: uid(), name, type, showOnCard: !['longtext', 'image', 'url'].includes(type) }; if (type === 'select' || type === 'multi') f.options = []; c.fields.push(f); }
+      return f;
+    }
+    return c.fields.find(f => f.id === id) || null;
+  });
+  const ti = fds.indexOf(tf);
+  const existing = new Set(c.items.map(it => norm(titleOf(it, c)))), seen = new Set();
+  const common = {};
+  for (const fd of c.fields) {
+    let v = BULK.common[fd.id];
+    if (fd.type === 'number' && !isEmpty(v)) { v = typeof v === 'number' ? v : num(v); if (isNaN(v)) v = undefined; }
+    if (typeof v === 'string') v = v.trim();
+    if (fd.type === 'rating' && !+v) v = undefined;
+    if (!isEmpty(v)) common[fd.id] = v;
+  }
+  const now = nowISO(), added = []; let skipped = 0;
+  for (const r of d.rows) {
+    const t = ti >= 0 ? norm(r[ti] || '') : '';
+    if (t && BULK.skipDup && (existing.has(t) || seen.has(t))) { skipped++; continue; }
+    if (t) seen.add(t);
+    const it = { id: uid(), created: now, updated: now, values: clone(common) };
+    fds.forEach((fd, j) => {
+      if (!fd) return; const raw = (r[j] ?? '').trim(); if (!raw) return;
+      const v = convertValue(raw, { type: 'text' }, fd); if (isEmpty(v)) return;
+      it.values[fd.id] = fd.type === 'multi' && Array.isArray(it.values[fd.id]) ? [...new Set([...it.values[fd.id], ...v])] : v;
+    });
+    c.items.push(it); added.push(it.id);
+  }
+  if (ti < 0 && c.items.length === added.length) { const t = fds.find(f => f && f.type === 'text'); if (t) c.settings.titleField = t.id; }
+  BULK = null; ED = null; saveNow(); closeModal(); renderShell();
+  toast(`✔️ ${added.length} ficha${added.length === 1 ? '' : 's'} añadida${added.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} repetida${skipped === 1 ? '' : 's'} saltada${skipped === 1 ? '' : 's'}` : ''}`,
+    added.length ? { label: 'Deshacer', fn: () => { const s = new Set(added); c.items = c.items.filter(it => !s.has(it.id)); saveNow(); renderShell(); } } : null);
 }
 async function importJSON() {
   const f = await pickFile('.json,application/json'); if (!f) return;
-  let d; try { d = JSON.parse(await f.text()); } catch (e) { toast('⚠️ El archivo no es un JSON válido'); return; }
+  let d; try { d = JSON.parse(await readTextFile(f)); } catch (e) { toast('⚠️ El archivo no es un JSON válido'); return; }
   const fresh = c => { c = clone(c); c.id = uid(); c.ui ||= defUI(); c.views ||= []; c.settings ||= {}; c.items ||= []; return c; };
   if (Array.isArray(d.catalogs)) {
     const r = await dialog({ title: 'Copia de seguridad', msg: `Contiene <b>${d.catalogs.length}</b> catálogos. ¿Qué quieres hacer?`, buttons: [{ label: 'Cancelar', value: null, cls: 'ghost' }, { label: 'Añadir a los míos', value: 'add', cls: '' }, { label: 'Reemplazar todo', value: 'replace', cls: 'danger' }] });
@@ -1211,13 +1339,16 @@ const A = {
   'exp-cat': () => { const c = cat(); download(`${slug(c.name)}-${today()}.json`, JSON.stringify({ app: 'catalogo', version: APP_VERSION, catalog: c }), 'application/json'); },
   'exp-csv': el => { const c = cat(); download(`${slug(c.name)}-${today()}.csv`, toCSV(el.dataset.v === 'all' ? c.items : R.items, c), 'text/csv;charset=utf-8'); },
   'imp-json': importJSON,
-  'imp-csv': async () => { const f = await pickFile('.csv,.tsv,.txt,text/csv'); if (f) importTable(await f.text()); },
-  'imp-paste': () => { const t = $('#paste')?.value || ''; if (t.trim()) importTable(t); },
+  bulk: () => openBulk(),
+  'bulk-open-file': async () => { const f = await pickFile('.csv,.tsv,.txt,text/csv,text/plain'); if (f) openBulk(await readTextFile(f)); },
+  'bulk-file': async () => { const f = await pickFile('.csv,.tsv,.txt,text/csv,text/plain'); if (!f) return; BULK.text = await readTextFile(f); $('#bulk-text').value = BULK.text; bulkUpdate(); },
+  'bulk-go': () => bulkGo(),
 };
 function scAddOpt(i) { const inp = $(`[data-scnew="${i}"]`); const l = inp?.value.trim(); if (!l) return; const f = SC.fields[i]; f.options ||= []; if (!f.options.some(o => norm(o.label) === norm(l))) f.options.push({ id: uid(), label: l, color: PALETTE[f.options.length % PALETTE.length] }); renderSchema(); $(`[data-scnew="${i}"]`)?.focus(); }
 
 /* Entradas de texto y desplegables */
 const IN = {
+  'bulk-text': el => { BULK.text = el.value; clearTimeout(IN.t); IN.t = setTimeout(bulkUpdate, 150); },
   'ed-v': el => { ED.values[el.dataset.f] = el.value; },
   'adv-v': el => { nodeAt(el.dataset.p)[el.dataset.k] = el.value; el.closest('.cond')?.classList.toggle('incomplete', !condComplete(nodeAt(el.dataset.p), cat())); updateAdvLive(); },
   'sc-name': el => { SC.fields[+el.dataset.i].name = el.value; },
@@ -1225,6 +1356,10 @@ const IN = {
   'sc-ocolor': el => { SC.fields[+el.dataset.i].options[+el.dataset.j].color = el.value; },
 };
 const CH = {
+  'bulk-sep': el => { BULK.sep = el.value; BULK.header = 'auto'; bulkUpdate(); },
+  'bulk-head': el => { BULK.header = el.checked ? 'yes' : 'no'; bulkUpdate(); },
+  'bulk-map': el => { BULK.map[+el.dataset.j] = el.value; bulkUpdate(); },
+  'bulk-dup': el => { BULK.skipDup = el.checked; bulkUpdate(); },
   'adv-on': el => { ui().advOn = el.checked; refresh(); },
   'adv-field': el => { const k = nodeAt(el.dataset.p), c = cat(), fd = fieldById(c, el.value); k.field = fd.id; k.op = (OPS[fd.type] || OPS.text)[0][0]; k.value = (fd.type === 'select' || fd.type === 'multi') ? [] : ''; k.value2 = ''; renderAdv(); updateAdvLive(); },
   'adv-opsel': el => { const k = nodeAt(el.dataset.p); const wasDays = k.op === 'lastDays'; k.op = el.value; if (wasDays !== (k.op === 'lastDays')) k.value = ''; renderAdv(); updateAdvLive(); },

@@ -2,7 +2,7 @@
 // - Primero intenta descargar de internet (así siempre ves la última versión);
 //   solo si no hay conexión usa la copia guardada.
 // - Si cambias este archivo, sube antes el número de CACHE.
-const CACHE = "catalogo-v1";
+const CACHE = "catalogo-v2";
 const FILES = ["./", "index.html", "app.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png"];
 
 self.addEventListener("install", e => {

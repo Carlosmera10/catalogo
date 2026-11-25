@@ -21,7 +21,8 @@ Catálogo personal para lo que quieras (juegos, libros, películas, inventario�
 - **🎲 Al azar**: elige una ficha entre las filtradas.
 - **📊 Resumen**: recuentos por opción y mínimo / media / máximo / suma de los números, sobre lo filtrado.
 - **Ficha**: navegación anterior/siguiente, duplicar, borrar con «Deshacer»; tocar una etiqueta filtra por ella.
-- **Importar / exportar**: copia de seguridad completa (.json), catálogo suelto (.json), CSV con punto y coma para Excel (todo o lo filtrado), importar CSV o **pegar celdas de Excel** (crea los campos que falten y adivina su tipo).
+- **Añadir varias fichas de golpe** (botón «≡＋ Varias», menú ⋯ o desde «Nueva ficha»): una por línea (se quitan viñetas y numeración) o tabla CSV / celdas de Excel, con o sin fila de títulos. Vista previa, elección del campo de cada columna (o campo nuevo), valores comunes para todas, aviso y salto de repetidas, y «Deshacer». Lee CSV en UTF-8 o en el formato antiguo de Excel (Windows-1252).
+- **Importar / exportar**: copia de seguridad completa (.json), catálogo suelto (.json), CSV con punto y coma para Excel (todo o lo filtrado), y acceso a «Añadir varias» para cargar CSV o pegar celdas de Excel.
 - Tema claro / oscuro / automático. Atajos: `/` buscar, `N` nueva ficha, `Esc` cerrar, `←` `→` en el detalle.
 
 Los datos se guardan **solo en el dispositivo** (IndexedDB del navegador). Para pasarlos de un dispositivo a otro, usa la copia de seguridad.
